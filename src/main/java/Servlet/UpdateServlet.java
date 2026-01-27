@@ -1,0 +1,81 @@
+package Servlet;
+
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+
+import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+import util.DBConnection;
+import util.PDFUtil;
+import util.EmailUtil;
+
+@WebServlet("/updateRecord")
+public class UpdateServlet extends HttpServlet {
+
+    protected void doPost(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
+
+        response.setContentType("text/html");
+        PrintWriter out = response.getWriter();
+
+        try {
+            //  Form se data lena
+            int id = Integer.parseInt(request.getParameter("id"));
+            String name = request.getParameter("name");
+            String email = request.getParameter("email");  
+            String course = request.getParameter("course");
+
+            // DB connection
+            Connection con = DBConnection.getConnection();
+
+            // Update query
+            String sql = "UPDATE aditi.ACADEMIC_RECORDS SET NAME=?, EMAIL=?, COURSE=? WHERE ID=?";
+            PreparedStatement ps = con.prepareStatement(sql);
+            ps.setString(1, name);
+            ps.setString(2, email);
+            ps.setString(3, course);
+            ps.setInt(4, id);
+
+            // Execute
+            int rows = ps.executeUpdate();
+
+            if (rows > 0) {
+                out.println("<h2>Record Updated Successfully ✅</h2>");
+                out.println("<p>ID: " + id + "</p>");
+
+                // PDF generate
+                String data =
+                    "Record Updated Successfully\n\n" +
+                    "ID: " + id + "\n" +
+                    "Name: " + name + "\n" +
+                    "Email: " + email + "\n" +
+                    "Course: " + course;
+                PDFUtil.createPDF(data);
+
+                // Email send
+                if (email != null && !email.isEmpty()) {
+                    String subject = "Academic Record Updated";
+                    String message = "Hello " + name + ",\n\nYour record has been updated successfully.\n\n" + data;
+                    EmailUtil.sendEmail(email, subject, message);
+                    out.println("<h3>Email sent to: " + email + "</h3>");
+                }
+
+            } else {
+                out.println("<h2>No Record Found with ID: " + id + "</h2>");
+            }
+
+            out.println("<a href='Record.html'>Go Back</a>");
+            con.close();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            out.println("<h3>Error: " + e.getMessage() + "</h3>");
+        }
+    }
+}
