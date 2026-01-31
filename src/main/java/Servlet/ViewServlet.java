@@ -1,14 +1,17 @@
 package Servlet;
+
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+
 import util.DBConnection;
 import util.PDFUtil;
 import util.EmailUtil;
@@ -24,49 +27,69 @@ public class ViewServlet extends HttpServlet {
 
         try {
             int id = Integer.parseInt(request.getParameter("id"));
-
             Connection con = DBConnection.getConnection();
 
-            //  Fetch record
+            // 🔹 1️⃣ Browser display → only this ID
             String sql = "SELECT * FROM aditi.ACADEMIC_RECORDS WHERE ID = ?";
-            PreparedStatement ps = con.prepareStatement(sql);
+            PreparedStatement ps = con.prepareStatement(
+                    sql,
+                    ResultSet.TYPE_SCROLL_INSENSITIVE,
+                    ResultSet.CONCUR_READ_ONLY
+            );
             ps.setInt(1, id);
             ResultSet rs = ps.executeQuery();
 
             boolean found = false;
-            String email = null; 
-
-            StringBuilder dataForPDF = new StringBuilder();
+            StringBuilder dataForEmail = new StringBuilder();
+            String userEmail = null;
 
             while (rs.next()) {
                 found = true;
-                email = rs.getString("EMAIL"); 
-                out.println("<hr>");
-                out.println("ID: " + rs.getInt("ID") + "<br>");
-                out.println("Name: " + rs.getString("NAME") + "<br>");
-                out.println("Email: " + email + "<br>");
-                out.println("Course: " + rs.getString("COURSE") + "<br>");
 
-                // PDF content
-                dataForPDF.append("ID: ").append(rs.getInt("ID")).append("\n")
-                          .append("Name: ").append(rs.getString("NAME")).append("\n")
-                          .append("Email: ").append(email).append("\n")
-                          .append("Course: ").append(rs.getString("COURSE")).append("\n\n");
+                int recordId = rs.getInt("ID");
+                String name = rs.getString("NAME");
+                String email = rs.getString("EMAIL");
+                String course = rs.getString("COURSE");
+
+                if (userEmail == null) userEmail = email;
+
+                out.println("<hr>");
+                out.println("ID: " + recordId + "<br>");
+                out.println("Name: " + name + "<br>");
+                out.println("Email: " + email + "<br>");
+                out.println("Course: " + course + "<br>");
+
+                dataForEmail.append("ID: ").append(recordId).append("\n")
+                            .append("Name: ").append(name).append("\n")
+                            .append("Email: ").append(email).append("\n")
+                            .append("Course: ").append(course).append("\n\n");
             }
 
-            if (!found) {
-                out.println("<h3>No Record Found </h3>");
-            } else {
-                //  PDF generate
-                PDFUtil.createPDF(dataForPDF.toString());
+            if (found) {
 
-                //  Email send
-                if (email != null && !email.isEmpty()) {
-                    String subject = "Your Academic Record Details";
-                    String message = "Hello,\n\nHere are your academic record details:\n\n" + dataForPDF.toString();
-                    EmailUtil.sendEmail(email, subject, message);
-                    out.println("<h3>Email sent to: " + email + " </h3>");
+                // 🔹 2️⃣ Fetch full DB for PDF
+                String fullDbSql = "SELECT * FROM aditi.ACADEMIC_RECORDS";
+                PreparedStatement psFull = con.prepareStatement(
+                        fullDbSql,
+                        ResultSet.TYPE_SCROLL_INSENSITIVE,
+                        ResultSet.CONCUR_READ_ONLY
+                );
+                ResultSet rsFull = psFull.executeQuery();
+
+                // 🔹 Generate PDF with all DB records
+                String pdfPath = PDFUtil.createPDF(rsFull);
+
+                // 🔹 Send email with full DB PDF
+                if (userEmail != null && !userEmail.isEmpty()) {
+                    String subject = "Complete Academic Records PDF";
+                    String message = "Hello,\n\nAttached is the PDF with all academic records from the database.";
+
+                    EmailUtil.sendEmailWithAttachment(userEmail, subject, message, pdfPath);
+                    out.println("<h3>Email with full DB PDF sent to: " + userEmail + "</h3>");
                 }
+
+            } else {
+                out.println("<h3>No Record Found</h3>");
             }
 
             out.println("<br><a href='Record.html'>Go Back</a>");

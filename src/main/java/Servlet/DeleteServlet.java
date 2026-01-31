@@ -27,50 +27,76 @@ public class DeleteServlet extends HttpServlet {
 
         try {
             int id = Integer.parseInt(request.getParameter("id"));
-
             Connection con = DBConnection.getConnection();
 
-            //  Delete se pehle email fetch karo DB se
+            // 🔹 1️⃣ Fetch record BEFORE delete (email content ke liye)
+            String name = null;
+            String course = null;
             String email = null;
-            String emailSql = "SELECT EMAIL FROM aditi.ACADEMIC_RECORDS WHERE ID=?";
-            PreparedStatement psEmail = con.prepareStatement(emailSql);
-            psEmail.setInt(1, id);
-            ResultSet rsEmail = psEmail.executeQuery();
-            if (rsEmail.next()) {
-                email = rsEmail.getString("EMAIL");
+
+            String fetchSql =
+                "SELECT NAME, COURSE, EMAIL FROM aditi.ACADEMIC_RECORDS WHERE ID=?";
+            PreparedStatement psFetch = con.prepareStatement(fetchSql);
+            psFetch.setInt(1, id);
+            ResultSet rsFetch = psFetch.executeQuery();
+
+            if (rsFetch.next()) {
+                name = rsFetch.getString("NAME");
+                course = rsFetch.getString("COURSE");
+                email = rsFetch.getString("EMAIL");
             }
 
-            // Delete record
-            String sql = "DELETE FROM aditi.ACADEMIC_RECORDS WHERE ID = ?";
-            PreparedStatement ps = con.prepareStatement(sql);
-            ps.setInt(1, id);
-            int rows = ps.executeUpdate();
+            // 🔹 2️⃣ Delete record
+            String deleteSql = "DELETE FROM aditi.ACADEMIC_RECORDS WHERE ID = ?";
+            PreparedStatement psDelete = con.prepareStatement(deleteSql);
+            psDelete.setInt(1, id);
+            int rows = psDelete.executeUpdate();
 
             if (rows > 0) {
+
                 out.println("<h2>Record Deleted Successfully ✅</h2>");
                 out.println("<p>ID: " + id + "</p>");
 
-                //  PDF generate
-                String data = "Record Deleted Successfully\n\nDeleted ID: " + id;
-                PDFUtil.createPDF(data);
-                out.println("<h3>PDF Generated Successfully </h3>");
+                // 🔹 3️⃣ Fetch FULL DB after delete (PDF ke liye)
+                String fullDbSql = "SELECT * FROM aditi.ACADEMIC_RECORDS";
+                PreparedStatement psFull = con.prepareStatement(
+                        fullDbSql,
+                        ResultSet.TYPE_SCROLL_INSENSITIVE,
+                        ResultSet.CONCUR_READ_ONLY
+                );
+                ResultSet rsFull = psFull.executeQuery();
 
-                //Email send
+                // 🔹 4️⃣ Generate PDF with FULL DB
+                String pdfPath = PDFUtil.createPDF(rsFull);
+                out.println("<h3>PDF Generated Successfully</h3>");
+
+                // 🔹 5️⃣ Email with PDF attachment
                 if (email != null && !email.isEmpty()) {
                     String subject = "Academic Record Deleted";
-                    String message = "Hello,\n\nYour record with ID " + id + " has been deleted successfully.\n\n" + data;
-                    EmailUtil.sendEmail(email, subject, message);
-                    out.println("<h3>Email sent to: " + email + " </h3>");
-                } else {
-                    out.println("<h3>Email not found for this ID </h3>");
+                    String message =
+                        "Hello " + name + ",\n\n" +
+                        "Your academic record has been deleted successfully.\n\n" +
+                        "Deleted Record Details:\n" +
+                        "ID: " + id + "\n" +
+                        "Name: " + name + "\n" +
+                        "Course: " + course + "\n\n" +
+                        "Attached PDF contains all remaining records.";
+
+                    EmailUtil.sendEmailWithAttachment(
+                        email,
+                        subject,
+                        message,
+                        pdfPath
+                    );
+
+                    out.println("<h3>Email with full DB PDF sent to: " + email + "</h3>");
                 }
 
             } else {
                 out.println("<h2>No Record Found with ID: " + id + "</h2>");
             }
 
-            out.println("<a href='Record.html'>Go Back</a>");
-
+            out.println("<br><a href='Record.html'>Go Back</a>");
             con.close();
 
         } catch (Exception e) {

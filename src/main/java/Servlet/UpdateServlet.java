@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
@@ -25,47 +26,54 @@ public class UpdateServlet extends HttpServlet {
         PrintWriter out = response.getWriter();
 
         try {
-            //  Form se data lena
             int id = Integer.parseInt(request.getParameter("id"));
             String name = request.getParameter("name");
-            String email = request.getParameter("email");  
+            String email = request.getParameter("email");
             String course = request.getParameter("course");
 
-            // DB connection
             Connection con = DBConnection.getConnection();
 
-            // Update query
             String sql = "UPDATE aditi.ACADEMIC_RECORDS SET NAME=?, EMAIL=?, COURSE=? WHERE ID=?";
             PreparedStatement ps = con.prepareStatement(sql);
             ps.setString(1, name);
             ps.setString(2, email);
             ps.setString(3, course);
             ps.setInt(4, id);
-
-            // Execute
+            ResultSet rs =null;
+            PreparedStatement fetchps=null;
             int rows = ps.executeUpdate();
 
             if (rows > 0) {
                 out.println("<h2>Record Updated Successfully ✅</h2>");
                 out.println("<p>ID: " + id + "</p>");
 
-                // PDF generate
-                String data =
-                    "Record Updated Successfully\n\n" +
-                    "ID: " + id + "\n" +
-                    "Name: " + name + "\n" +
-                    "Email: " + email + "\n" +
-                    "Course: " + course;
-                PDFUtil.createPDF(data);
+                String selectSQL = "SELECT * FROM aditi.ACADEMIC_RECORDS ";
+                PreparedStatement psSelect = con.prepareStatement(selectSQL);
+              
+                rs = psSelect.executeQuery();
+                // 🔹 PDF generate (TABLE FORMAT)
+                String pdfPath = PDFUtil.createPDF(rs);
+                out.println("<h3>PDF Generated Successfully</h3>");
+            
 
-                // Email send
+                // ✅ Email with PDF attachment
                 if (email != null && !email.isEmpty()) {
                     String subject = "Academic Record Updated";
-                    String message = "Hello " + name + ",\n\nYour record has been updated successfully.\n\n" + data;
-                    EmailUtil.sendEmail(email, subject, message);
+                    String message =
+                            "Hello " + name + ",\n\n" +
+                            "Your academic record has been updated successfully.\n\n" +
+                            "ID: " + id + "\n" +
+                            "Course: " + course;
+
+                    EmailUtil.sendEmailWithAttachment(
+                            email,
+                            subject,
+                            message,
+                            pdfPath
+                    );
+
                     out.println("<h3>Email sent to: " + email + "</h3>");
                 }
-
             } else {
                 out.println("<h2>No Record Found with ID: " + id + "</h2>");
             }
